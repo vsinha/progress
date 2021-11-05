@@ -6,6 +6,7 @@ struct Progress<Iter> {
     iter: Iter,
     i: usize,
     bound: Option<usize>,
+    brackets: (char, char),
 }
 
 impl<Iter> Progress<Iter> {
@@ -14,6 +15,7 @@ impl<Iter> Progress<Iter> {
             iter: iter,
             i: 0,
             bound: None,
+            brackets: ('<', '>'),
         }
     }
 }
@@ -24,6 +26,11 @@ where
 {
     fn with_bound(mut self) -> Self {
         self.bound = Some(self.iter.len());
+        self
+    }
+
+    fn with_brackets(mut self, brackets: (char, char)) -> Self {
+        self.brackets = brackets;
         self
     }
 }
@@ -37,11 +44,14 @@ where
         match self.bound {
             None => println!("{}{}", CLEAR, "*".repeat(self.i)),
             Some(bound) => {
+                let (l, r) = self.brackets;
                 println!(
-                    "{}<{}{}>",
+                    "{}{}{}{}{}",
                     CLEAR,
+                    l,
                     "*".repeat(self.i),
-                    " ".repeat(bound - self.i)
+                    " ".repeat(bound - self.i),
+                    r
                 )
             }
         }
@@ -70,7 +80,12 @@ where
 fn main() {
     let count = vec![1, 2, 3];
 
-    for i in count.iter().progress().with_bound() {
+    for i in count
+        .iter()
+        .progress()
+        .with_bound()
+        .with_brackets(('{', '}'))
+    {
         expensive_computation(i)
     }
 }
