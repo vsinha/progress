@@ -31,6 +31,8 @@ trait Indicator {
     fn curr(&self) -> &str;
 
     fn advance(&mut self);
+
+    fn as_str(&self, i: usize) -> String;
 }
 
 impl<'a> Indicator for SimpleIndicator<'a> {
@@ -40,6 +42,10 @@ impl<'a> Indicator for SimpleIndicator<'a> {
 
     fn advance(&mut self) {
         // do nothing
+    }
+
+    fn as_str(&self, i: usize) -> String {
+        self.string.repeat(i)
     }
 }
 
@@ -51,6 +57,10 @@ impl<'a> Indicator for RotatingIndicator<'a> {
     fn advance(&mut self) {
         self.i += 1;
         self.i %= self.strings.len();
+    }
+
+    fn as_str(&self, i: usize) -> String {
+        self.strings[self.i].repeat(i)
     }
 }
 
@@ -84,7 +94,7 @@ impl ProgressDisplay for Bounded<'_> {
             "{}{}{}{}{}",
             CLEAR,
             l,
-            progress.indicator_as_str(),
+            progress.indicator.as_str(progress.i),
             " ".repeat(progress.indicator.curr().len() * (self.bound - progress.i)),
             r
         )
@@ -96,7 +106,7 @@ impl ProgressDisplay for Unbounded {
     where
         IndicatorMode: Indicator,
     {
-        println!("{}{}", CLEAR, progress.indicator_as_str())
+        println!("{}{}", CLEAR, progress.indicator.as_str(progress.i),)
     }
 }
 
@@ -115,15 +125,6 @@ where
             indicator: self.indicator,
             bound,
         }
-    }
-}
-
-impl<Iter, Bound, IndicatorMode> Progress<Iter, Bound, IndicatorMode>
-where
-    IndicatorMode: Indicator,
-{
-    fn indicator_as_str(&self) -> String {
-        self.indicator.curr().repeat(self.i)
     }
 }
 
@@ -153,7 +154,7 @@ where
 }
 
 fn expensive_computation(_i: &usize) {
-    sleep(Duration::from_millis(500));
+    sleep(Duration::from_millis(250));
 }
 
 trait ProgressIteratorExt: Sized {
@@ -178,16 +179,17 @@ impl<Iter: Iterator> ProgressIteratorExt for Iter {
 }
 
 fn main() {
-    let count = vec![1, 2, 3, 4, 5, 6];
+    let count = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+
     let indicator = RotatingIndicator {
         i: 0,
-        strings: vec!["*", "+"],
+        strings: vec![",", "~", "`"],
     };
 
     for i in count
         .iter()
+        // .progress()
         .progress_with_indicator(indicator)
-        // .with_indicator(SimpleIndicator { string: "_" })
         .with_bound()
         .with_brackets(("<|", "|>"))
     {
