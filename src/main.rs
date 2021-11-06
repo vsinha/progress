@@ -11,53 +11,100 @@ struct Bounded<'a> {
     brackets: (&'a str, &'a str),
 }
 
-struct Progress<'a, Iter, Bounded> {
-    iter: Iter,
-    i: usize,
-    indicator: &'a str,
-    bound: Bounded,
+struct SimpleIndicator<'a> {
+    string: &'a str,
 }
 
-impl<Iter> Progress<'_, Iter, Unbounded> {
-    fn new(iter: Iter) -> Self {
+struct RotatingIndicator<'a> {
+    i: usize,
+    strings: Vec<&'a str>,
+}
+
+struct Progress<Iter, BoundMode, IndicatorMode> {
+    iter: Iter,
+    i: usize,
+    indicator: IndicatorMode,
+    bound: BoundMode,
+}
+
+trait Indicator {
+    fn curr(&self) -> &str;
+
+    fn advance(&mut self);
+}
+
+impl<'a> Indicator for SimpleIndicator<'a> {
+    fn curr(&self) -> &str {
+        self.string
+    }
+
+    fn advance(&mut self) {
+        // do nothing
+    }
+}
+
+impl<'a> Indicator for RotatingIndicator<'a> {
+    fn curr(&self) -> &str {
+        self.strings[self.i]
+    }
+
+    fn advance(&mut self) {
+        self.i += 1;
+        self.i %= self.strings.len();
+    }
+}
+
+impl<'a, Iter, Ind> Progress<Iter, Unbounded, Ind>
+where
+    Ind: Indicator,
+{
+    fn new(iter: Iter, indicator: Ind) -> Self {
         Progress {
             iter: iter,
             i: 0,
-            indicator: "*",
+            indicator: indicator,
             bound: Unbounded,
         }
     }
 }
 
 trait ProgressDisplay: Sized {
-    fn display<Iter>(&self, progress: &Progress<Iter, Self>);
+    fn display<Iter, IndicatorMode>(&self, progress: &Progress<Iter, Self, IndicatorMode>)
+    where
+        IndicatorMode: Indicator;
 }
 
 impl ProgressDisplay for Bounded<'_> {
-    fn display<Iter>(&self, progress: &Progress<Iter, Self>) {
+    fn display<Iter, IndicatorMode>(&self, progress: &Progress<Iter, Bounded<'_>, IndicatorMode>)
+    where
+        IndicatorMode: Indicator,
+    {
         let (l, r) = self.brackets;
         println!(
             "{}{}{}{}{}",
             CLEAR,
             l,
             progress.indicator_as_str(),
-            " ".repeat(progress.indicator.len() * (self.bound - progress.i)),
+            " ".repeat(progress.indicator.curr().len() * (self.bound - progress.i)),
             r
         )
     }
 }
 
 impl ProgressDisplay for Unbounded {
-    fn display<Iter>(&self, progress: &Progress<Iter, Self>) {
-        println!("{}{}", CLEAR, progress.indicator_as_str(),)
+    fn display<Iter, IndicatorMode>(&self, progress: &Progress<Iter, Unbounded, IndicatorMode>)
+    where
+        IndicatorMode: Indicator,
+    {
+        println!("{}{}", CLEAR, progress.indicator_as_str())
     }
 }
 
-impl<Iter> Progress<'static, Iter, Unbounded>
+impl<Iter, IndicatorMode> Progress<Iter, Unbounded, IndicatorMode>
 where
     Iter: ExactSizeIterator,
 {
-    fn with_bound(self) -> Progress<'static, Iter, Bounded<'static>> {
+    fn with_bound(self) -> Progress<Iter, Bounded<'static>, IndicatorMode> {
         let bound = Bounded {
             bound: self.iter.len(),
             brackets: ("[", "]"),
@@ -71,18 +118,16 @@ where
     }
 }
 
-impl<'a, Iter, Bound> Progress<'a, Iter, Bound> {
-    fn with_indicator(mut self, indicator: &'a str) -> Self {
-        self.indicator = indicator;
-        self
-    }
-
+impl<Iter, Bound, IndicatorMode> Progress<Iter, Bound, IndicatorMode>
+where
+    IndicatorMode: Indicator,
+{
     fn indicator_as_str(&self) -> String {
-        self.indicator.repeat(self.i)
+        self.indicator.curr().repeat(self.i)
     }
 }
 
-impl<'a, Iter> Progress<'a, Iter, Bounded<'a>>
+impl<'a, Iter, IndicatorMode> Progress<Iter, Bounded<'a>, IndicatorMode>
 where
     Iter: ExactSizeIterator,
 {
@@ -92,43 +137,57 @@ where
     }
 }
 
-impl<Iter, Bound> Iterator for Progress<'_, Iter, Bound>
+impl<Iter, Bound, IndicatorMode> Iterator for Progress<Iter, Bound, IndicatorMode>
 where
     Iter: Iterator,
     Bound: ProgressDisplay,
+    IndicatorMode: Indicator,
 {
     type Item = Iter::Item;
     fn next(&mut self) -> Option<Self::Item> {
-        self.bound.display(&self);
+        self.bound.display(self);
+        self.indicator.advance();
         self.i += 1;
         self.iter.next()
     }
 }
 
 fn expensive_computation(_i: &usize) {
-    sleep(Duration::from_secs(1));
+    sleep(Duration::from_millis(500));
 }
 
 trait ProgressIteratorExt: Sized {
-    fn progress(self) -> Progress<'static, Self, Unbounded>;
+    fn progress(self) -> Progress<Self, Unbounded, SimpleIndicator<'static>>;
+    fn progress_with_indicator<Ind: Indicator>(
+        self,
+        indicator: Ind,
+    ) -> Progress<Self, Unbounded, Ind>;
 }
 
-impl<Iter> ProgressIteratorExt for Iter
-where
-    Iter: Iterator,
-{
-    fn progress(self) -> Progress<'static, Self, Unbounded> {
-        Progress::new(self)
+impl<Iter: Iterator> ProgressIteratorExt for Iter {
+    fn progress(self) -> Progress<Iter, Unbounded, SimpleIndicator<'static>> {
+        Progress::new(self, SimpleIndicator { string: "*" })
+    }
+
+    fn progress_with_indicator<Ind: Indicator>(
+        self,
+        indicator: Ind,
+    ) -> Progress<Iter, Unbounded, Ind> {
+        Progress::new(self, indicator)
     }
 }
 
 fn main() {
-    let count = vec![1, 2, 3];
+    let count = vec![1, 2, 3, 4, 5, 6];
+    let indicator = RotatingIndicator {
+        i: 0,
+        strings: vec!["*", "+"],
+    };
 
     for i in count
         .iter()
-        .progress()
-        .with_indicator("_")
+        .progress_with_indicator(indicator)
+        // .with_indicator(SimpleIndicator { string: "_" })
         .with_bound()
         .with_brackets(("<|", "|>"))
     {
