@@ -1,24 +1,27 @@
 use std::{thread::sleep, time::Duration};
 
+// TODO vsinha: instead of clearing the whole screen, just clear the last line we printed
 const CLEAR: &str = "\x1B[2J\x1B[1;1H";
 
 struct Unbounded;
-struct Bounded {
+struct Bounded<'a> {
     bound: usize,
-    brackets: (char, char),
+    brackets: (&'a str, &'a str),
 }
 
-struct Progress<Iter, Bounded> {
+struct Progress<'a, Iter, Bounded> {
     iter: Iter,
     i: usize,
+    indicator: &'a str,
     bound: Bounded,
 }
 
-impl<Iter> Progress<Iter, Unbounded> {
+impl<Iter> Progress<'_, Iter, Unbounded> {
     fn new(iter: Iter) -> Self {
         Progress {
             iter: iter,
             i: 0,
+            indicator: "*",
             bound: Unbounded,
         }
     }
@@ -28,15 +31,15 @@ trait ProgressDisplay: Sized {
     fn display<Iter>(&self, progress: &Progress<Iter, Self>);
 }
 
-impl ProgressDisplay for Bounded {
+impl ProgressDisplay for Bounded<'_> {
     fn display<Iter>(&self, progress: &Progress<Iter, Self>) {
         let (l, r) = self.brackets;
         println!(
             "{}{}{}{}{}",
             CLEAR,
             l,
-            "*".repeat(progress.i),
-            " ".repeat(self.bound - progress.i),
+            progress.indicator.repeat(progress.i),
+            " ".repeat(progress.indicator.len() * (self.bound - progress.i)),
             r
         )
     }
@@ -44,38 +47,46 @@ impl ProgressDisplay for Bounded {
 
 impl ProgressDisplay for Unbounded {
     fn display<Iter>(&self, progress: &Progress<Iter, Self>) {
-        println!("{}{}", CLEAR, "*".repeat(progress.i))
+        println!("{}{}", CLEAR, progress.indicator.repeat(progress.i))
     }
 }
 
-impl<Iter> Progress<Iter, Unbounded>
+impl<Iter> Progress<'static, Iter, Unbounded>
 where
     Iter: ExactSizeIterator,
 {
-    fn with_bound(self) -> Progress<Iter, Bounded> {
+    fn with_bound(self) -> Progress<'static, Iter, Bounded<'static>> {
         let bound = Bounded {
             bound: self.iter.len(),
-            brackets: ('[', ']'),
+            brackets: ("[", "]"),
         };
         Progress {
             iter: self.iter,
             i: self.i,
+            indicator: self.indicator,
             bound,
         }
     }
 }
 
-impl<Iter> Progress<Iter, Bounded>
+impl<'a, Iter, Bound> Progress<'a, Iter, Bound> {
+    fn with_indicator(mut self, indicator: &'a str) -> Self {
+        self.indicator = indicator;
+        self
+    }
+}
+
+impl<'a, Iter> Progress<'a, Iter, Bounded<'a>>
 where
     Iter: ExactSizeIterator,
 {
-    fn with_brackets(mut self, brackets: (char, char)) -> Self {
+    fn with_brackets(mut self, brackets: (&'a str, &'a str)) -> Self {
         self.bound.brackets = brackets;
         self
     }
 }
 
-impl<Iter, Bound> Iterator for Progress<Iter, Bound>
+impl<Iter, Bound> Iterator for Progress<'_, Iter, Bound>
 where
     Iter: Iterator,
     Bound: ProgressDisplay,
@@ -93,14 +104,14 @@ fn expensive_computation(_i: &usize) {
 }
 
 trait ProgressIteratorExt: Sized {
-    fn progress(self) -> Progress<Self, Unbounded>;
+    fn progress(self) -> Progress<'static, Self, Unbounded>;
 }
 
 impl<Iter> ProgressIteratorExt for Iter
 where
     Iter: Iterator,
 {
-    fn progress(self) -> Progress<Self, Unbounded> {
+    fn progress(self) -> Progress<'static, Self, Unbounded> {
         Progress::new(self)
     }
 }
@@ -112,7 +123,8 @@ fn main() {
         .iter()
         .progress()
         .with_bound()
-        .with_brackets(('{', '}'))
+        .with_brackets(("<<", ">>"))
+        .with_indicator(".*")
     {
         expensive_computation(i)
     }
