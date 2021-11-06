@@ -18,6 +18,17 @@ struct SimpleIndicator<'a> {
 struct RotatingIndicator<'a> {
     i: usize,
     strings: Vec<&'a str>,
+    history: Vec<&'a str>,
+}
+
+impl<'a> RotatingIndicator<'a> {
+    fn new(strings: Vec<&'a str>) -> RotatingIndicator {
+        RotatingIndicator {
+            strings: strings,
+            i: 0,
+            history: vec![],
+        }
+    }
 }
 
 struct Progress<Iter, BoundMode, IndicatorMode> {
@@ -45,7 +56,7 @@ impl<'a> Indicator for SimpleIndicator<'a> {
     }
 
     fn as_str(&self, i: usize) -> String {
-        self.string.repeat(i)
+        self.curr().repeat(i)
     }
 }
 
@@ -55,12 +66,13 @@ impl<'a> Indicator for RotatingIndicator<'a> {
     }
 
     fn advance(&mut self) {
+        self.history.push(self.curr());
         self.i += 1;
         self.i %= self.strings.len();
     }
 
     fn as_str(&self, i: usize) -> String {
-        self.strings[self.i].repeat(i)
+        self.curr().repeat(i)
     }
 }
 
@@ -181,10 +193,7 @@ impl<Iter: Iterator> ProgressIteratorExt for Iter {
 fn main() {
     let count = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
-    let indicator = RotatingIndicator {
-        i: 0,
-        strings: vec![",", "~", "`"],
-    };
+    let indicator = RotatingIndicator::new(vec![",", "~", "`"]);
 
     for i in count
         .iter()
