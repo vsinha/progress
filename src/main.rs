@@ -3,6 +3,8 @@ use std::{thread::sleep, time::Duration};
 // TODO vsinha: instead of clearing the whole screen, just clear the last line we printed
 const CLEAR: &str = "\x1B[2J\x1B[1;1H";
 
+// ascii 'height' order: _,.-~+*=<%^'"`
+
 struct Unbounded;
 struct Bounded<'a> {
     bound: usize,
@@ -38,7 +40,7 @@ impl ProgressDisplay for Bounded<'_> {
             "{}{}{}{}{}",
             CLEAR,
             l,
-            progress.indicator.repeat(progress.i),
+            progress.indicator_as_str(),
             " ".repeat(progress.indicator.len() * (self.bound - progress.i)),
             r
         )
@@ -47,7 +49,7 @@ impl ProgressDisplay for Bounded<'_> {
 
 impl ProgressDisplay for Unbounded {
     fn display<Iter>(&self, progress: &Progress<Iter, Self>) {
-        println!("{}{}", CLEAR, progress.indicator.repeat(progress.i))
+        println!("{}{}", CLEAR, progress.indicator_as_str(),)
     }
 }
 
@@ -73,6 +75,10 @@ impl<'a, Iter, Bound> Progress<'a, Iter, Bound> {
     fn with_indicator(mut self, indicator: &'a str) -> Self {
         self.indicator = indicator;
         self
+    }
+
+    fn indicator_as_str(&self) -> String {
+        self.indicator.repeat(self.i)
     }
 }
 
@@ -122,9 +128,9 @@ fn main() {
     for i in count
         .iter()
         .progress()
+        .with_indicator("_")
         .with_bound()
-        .with_brackets(("<<", ">>"))
-        .with_indicator(".*")
+        .with_brackets(("<|", "|>"))
     {
         expensive_computation(i)
     }
